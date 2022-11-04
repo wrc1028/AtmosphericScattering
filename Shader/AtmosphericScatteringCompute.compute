@@ -1,0 +1,40 @@
+#pragma kernel RayleighScattering
+#pragma kernel MieScattering
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
+
+// Planet radius; Atmospheric height; Atmospheric concentration
+SamplerState linearClampSampler;
+RWTexture2D<float4> Result;
+Texture2D<float> _CameraDepthTexture;
+
+float4 _TextureSize;    // xy: resolution; zw : 1 / resolution;
+
+// 获得射线的方向
+half3 GetRayDirection(half2 uv, float3 cameraPositionWS)
+{
+#if UNITY_UV_STARTS_AT_TOP
+    uv.y = 1 - uv.y;
+#endif
+    half3 uvPositionWS = mul(UNITY_MATRIX_I_VP, float4(uv * 2 - 1, 0, 1)).xyz;
+    return normalize(uvPositionWS - cameraPositionWS);
+}
+// earth model
+
+[numthreads(8,8,1)]
+void RayleighScattering (uint3 id : SV_DispatchThreadID)
+{
+    half2 uv = (id + 0.5) * _TextureSize.zw;
+    float3 cameraPositionWS = GetCameraPositionWS();
+    half3 rayDirection = GetRayDirection(uv, cameraPositionWS);
+    float linearDepth = LinearEyeDepth(_CameraDepthTexture[id.xy], _ZBufferParams);
+    float3 positionWS = cameraPositionWS + rayDirection * linearDepth;
+    Result[id.xy] = float4(positionWS, 1.0);
+}
+
+[numthreads(8,8,1)]
+void MieScattering (uint3 id : SV_DispatchThreadID)
+{
+    Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}

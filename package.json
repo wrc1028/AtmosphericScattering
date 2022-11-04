@@ -1,0 +1,9 @@
+{
+  "name": "com.custom.atmospheric",
+  "version": "0.0.1",
+  "displayName": "Atmospheric Scattering",
+  "unity": "2019.4",
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "7.5.3"
+  }
+}

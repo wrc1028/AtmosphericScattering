@@ -44,7 +44,7 @@
     #define Transmission            _AtmosphericParams.z
     #define RefractRatio            _AtmosphericParams.w
     #define PlanetRadius2           (_PlanetParams.w + _AtmosphericParams.x) * (_PlanetParams.w + _AtmosphericParams.x)
-    // #define PI                      3.14159265
+    
     Varyings VertScattering (Attributes input)
     {
         Varyings output = (Varyings)0;
@@ -91,16 +91,31 @@
         float refractFactor = (8 * PI * PI * PI * (refractRatio * refractRatio - 1) * (refractRatio * refractRatio - 1)) / 3;
         return refractFactor * waveLenghtFactor;
     }
-    // 波的吸收
+    // 衰减系数: 光从A点到B点之间, 光受到中间分子影响而发生的一系列衰减
+    // 这里只考虑衰减, 不考虑任何散射事件(内散射和外散射), 成为零级散射
+    float Transmittance(float opticalDepth)
+    {
+        // 当Transmission为1时, 这里设置一个常数, 让其效果为正常效果
+        return exp(-opticalDepth * Transmission);
+    }
+    // https://zhuanlan.zhihu.com/p/36498679
+    // 总散射系数: 波在经过这个小分子之后, 向所有方向的总散射系数
+    float3 RayleighScattering(float3 waveLenght, float refractRatio)
+    {
+        return (8 * PI * PI * PI * (refractRatio * refractRatio - 1) * (refractRatio * refractRatio - 1)) / (3 * Pow4(waveLenght));
+    }
+    float3 MieScattering()
+    {
+        return 0;
+    }
     float3 Scattering(float3 originColor, float opticalDepth)
     {
         float3 rayleighConstant = RayleighConstant(RefractRatio);
         return originColor * exp(-rayleighConstant * opticalDepth * Transmission);
     }
-    float3 PhaseFunction(float3 originColor, float cosAlpha)
+    float RayleighPhaseFunction(float cosAlpha)
     {
-        float phase = (3 * (1 + cosAlpha * cosAlpha)) / (16 * PI);
-        return originColor * phase;
+        return (3 * (1 + cosAlpha * cosAlpha)) / (16 * PI);
     }
 
     float CalculateOpticalDepth(float3 originPoint, half3 rayDirection, float marchingLength, float steps)
@@ -120,22 +135,24 @@
         // ray direction optical depth and light direction optical depth
         float stepSize = marchingLength / (_RayDirectionStepCount - 1);
         float rayDirectionOpticalDepth = 0;
-        float3 destination = rayOrigin;
         float3 result = 0;
         // 仅计算空气中光的散射
         for (int i = 0; i < (int)_RayDirectionStepCount; i++)
         {
             // 每步进一步, 计算当前点的大气密度, 并且对密度进行累加
-            rayDirectionOpticalDepth += CalculateOpticalDepth(destination, rayDirection, stepSize, _LightDirectionStepCount);
+            rayDirectionOpticalDepth += CalculateOpticalDepth(rayOrigin, rayDirection, stepSize, _LightDirectionStepCount);
+            rayOrigin += rayDirection * stepSize;
             // 获得当前点光源方向上光被大气吸收后的结果, 判断是否在阴影里
-            float lightRayInsideSphereDst = RayHitSphereDistance(destination, light.direction).y;
-            float lightAbsorptionResult = CalculateOpticalDepth(destination, light.direction, lightRayInsideSphereDst, _LightDirectionStepCount);
-            result += Scattering(light.color, rayDirectionOpticalDepth + lightAbsorptionResult);
-            
-            destination += rayDirection * stepSize;
+            float lightRayInsideSphereDst = RayHitSphereDistance(rayOrigin, light.direction).y;
+            float lightDirectionOpticalDepth = CalculateOpticalDepth(rayOrigin, light.direction, lightRayInsideSphereDst, _LightDirectionStepCount);
+            // result += Scattering(light.color, rayDirectionOpticalDepth + lightAbsorptionResult);
+            float currentDensity = GetAtmosphericDensity(rayOrigin, rayDirection, stepSize);
+            float3 transmission = exp(-RayleighScattering(float3(700, 530, 440), RefractRatio) * (rayDirectionOpticalDepth + lightDirectionOpticalDepth) * Transmission) * stepSize;
+            result += currentDensity * transmission;
         }
+        result *= RayleighScattering(float3(700, 530, 440), RefractRatio) * RayleighPhaseFunction(dot(light.direction, rayDirection)) * light.color * 3;
         // 计算场景中物体到相机的一个散射结果, 也就是雾效 rayDirectionOpticalDepth
-        result += Scattering(sceneColor.rgb, rayDirectionOpticalDepth);
+        result += sceneColor.rgb;
         return result;
     }
 

@@ -27,5 +27,5 @@ Material:
     - _LightDirectionStepCount: 12
     - _RayDirectionStepCount: 12
     m_Colors:
-    - _AtmosphericParams: {r: 60000, g: 2.5, b: 0.0001, a: 265.2}
+    - _AtmosphericParams: {r: 60000, g: 1, b: 0.5, a: 12}
     - _PlanetParams: {r: 0, g: -6360000, b: 0, a: 6360000}
